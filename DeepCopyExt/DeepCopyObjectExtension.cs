@@ -16,16 +16,16 @@ public static class DeepCopyObjectExtension
         private static readonly Func<object, object> ShallowClone;
 
         // Set of deeply immutable types**. This includes all primitives, some known immutable
-        // valuetypes, and a few sealed immutable reference types such as 'string', 'DBNull' and
-        // 'Version'. Nullable<T> of an immutable valuetype T is itself immutable as well but rather
+        // value types, and a few sealed immutable reference types such as 'string', 'DBNull' and
+        // 'Version'. Nullable<T> of an immutable value type T is itself immutable as well but rather
         // than duplicating all those entries here, they are added programmatically in the static
         // constructor below.
         //
         // When the DeepCopy encounters an object of one of these types it can simply return the same
-        // object without further (slower) deepcopy of its member fields.
+        // object without further (slower) deep copy of its member fields.
         //
         // ** or mutable value types (struct) that do not contain any reference fields (e.g. Quaternion,
-        // Vector2 etc, see below). This is still safe even for boxed versions of the struct because:
+        // Vector2 etc., see below). This is still safe even for boxed versions of the struct because:
         //
         // - when boxing such a struct, a copy is created => the boxed struct doesn't see
         //   mutations of the original struct
@@ -51,9 +51,6 @@ public static class DeepCopyObjectExtension
             typeof(ulong),
             typeof(float),
             typeof(double),
-#if NET5_0_OR_GREATER
-            typeof(Half),
-#endif
             typeof(decimal),
             typeof(BigInteger),
             typeof(Complex),
@@ -66,6 +63,9 @@ public static class DeepCopyObjectExtension
             typeof(Matrix4x4),      // ref free mutable value type
             typeof(Guid),
             typeof(DateTime),
+#if NET5_0_OR_GREATER
+            typeof(Half),
+#endif
 #if NET6_0_OR_GREATER
             typeof(DateOnly),
             typeof(TimeOnly),
@@ -88,14 +88,9 @@ public static class DeepCopyObjectExtension
         static DeepCopyContext()
         {
             var cloneMethod = typeof(object).GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            ShallowClone = (Func<object, object>)cloneMethod.CreateDelegate(typeof(Func<object, object>));
 
-#if NET5_0_OR_GREATER
-            ShallowClone = cloneMethod.CreateDelegate<Func<object, object>>();
-#else
-            ShallowClone = (Func<object, object>)Delegate.CreateDelegate(typeof(Func<object, object>), cloneMethod);
-#endif
-
-            // Nullable<T> of deeply immutable valuetypes are themselves deeply immutable
+            // Nullable<T> of deeply immutable value types are themselves deeply immutable
             foreach(var type in ImmutableTypes.Where(t => t.IsValueType).ToList())
             {
                 ImmutableTypes.Add(typeof(Nullable<>).MakeGenericType(type));
@@ -143,8 +138,8 @@ public static class DeepCopyObjectExtension
                 }
                 else if(arrayElementType.IsValueType)
                 {
-                    // if its an array of structs, there's no need to check and add the individual elements to 'visited', because in .NET it's impossible to create
-                    // references to individual array elements.
+                    // if it's an array of structs, there's no need to check and add the individual elements to 'visited',
+                    // because in .NET it's impossible to create references to individual array elements.
                     ReplaceArrayElements((Array)cloneObject, x => InternalCopy(x, false));
                 }
                 else
@@ -158,7 +153,7 @@ public static class DeepCopyObjectExtension
                 foreach(var fieldInfo in CachedNonShallowFields(typeToReflect))
                 {
                     var originalFieldValue = fieldInfo.GetValue(originalObject);
-                    // a valuetype field can never have a reference pointing to it, so don't check the object graph in that case
+                    // a value type field can never have a reference pointing to it, so don't check the object graph in that case
                     var clonedFieldValue = InternalCopy(originalFieldValue, !fieldInfo.FieldType.IsValueType);
                     fieldInfo.SetValue(cloneObject, clonedFieldValue);
                 }
@@ -232,7 +227,7 @@ public static class DeepCopyObjectExtension
             {
                 foreach(var fieldInfo in typeToReflect.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
                 {
-                    if(IsDeeplyImmutable(fieldInfo.FieldType)) continue; // this is 5% faster than a where clause..
+                    if(IsDeeplyImmutable(fieldInfo.FieldType)) continue; // this is 5% faster than a where clause
                     yield return fieldInfo;
                 }
                 typeToReflect = typeToReflect.BaseType;
